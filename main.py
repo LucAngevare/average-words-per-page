@@ -1,4 +1,4 @@
-import json, re, os, subprocess as subp, time, openpyxl
+import json, re, os, subprocess as subp, time, csv
 from datetime import datetime
 from docx import Document
 from PyPDF2 import PdfFileReader
@@ -11,30 +11,24 @@ def count_chars(doc):
         newparatextlist.append(paratext.text)
     
     return len(re.findall(r'\w+', '\n'.join(newparatextlist)))
-
-for dictionary_iteration in range(10000): #going for 1.000 iterations here just to see exactly how long this takes, if all goes well and stuff I'll up it, calculate how long each iteration takes exactly and I guess run the simulations overnight
-    for word_amount in range(300, 700): #using a starting point of 300 words because on average 500 words fills a page so I doubt any less will do, it's always possible though, a maximum of 700 because why not, it'll start the next dictionary_iteration when it has 2 pages
+dictionary_iteration=0
+while dictionary_iteration<len(dictionary):
+    for word_amount in range(300, 700):
         doc = Document()
-        wb = openpyxl.load_workbook("data.xlsx")
-        worksheet = wb["Sheet1"]
+        current_iteration_data = []
         startingTime = datetime.now()
         text = " ".join(dictionary[dictionary_iteration:dictionary_iteration+word_amount])
         paragraph = doc.add_paragraph(text)
         doc.save("sim.docx")
-        subp.run('pandoc -o sim.pdf sim.docx')
+        subp.run('pandoc -o sim.pdf sim.docx', shell=True)
         with open('sim.pdf', 'rb') as f:
             pdf = PdfFileReader(f)
             pageNum = pdf.getNumPages()
-        maximum_row = worksheet.max_row+1
-        worksheet[f'A{maximum_row}'] = dictionary_iteration
-        if (count_chars(doc)==word_amount): worksheet[f'B{maximum_row}'] = count_chars(doc)
-        else:
-            print(f'{count_chars(doc)} not equal to {word_amount}!')
-            worksheet[f'B{maximum_row}'] = (count_chars(doc)+word_amount)/2 #if something does go wrong and the actual word count in the document that is read in within the data is not equal to the theoretical word count, it should just take the average as that probably won't have too much impact on the simulation we're running, I will log this to the console, so if it happens constantly, something consistently doesn't add up, and more research is required.
-        worksheet[f'C{maximum_row}'] = pageNum
-        worksheet[f'D{maximum_row}'] = datetime.now().microsecond-startingTime.microsecond
-        worksheet[f'E{maximum_row}'] = len(text)
-        print(f'{dictionary_iteration} with a length of {word_amount} has {pageNum} pages, and {len(text)} characters.')
+        current_iteration_data.extend([dictionary_iteration, count_chars(doc) if count_chars(doc)==word_amount else (count_chars(doc)+word_amount)/2, pageNum, datetime.now().microsecond-startingTime.microsecond if datetime.now().microsecond-startingTime.microsecond>0 else (datetime.now().microsecond-startingTime.microsecond)*-1, len(text)])
+        with open('data.csv', 'a', encoding='UTF8', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(current_iteration_data)
+        print(str(dictionary_iteration) + ' with a length of ' + str(word_amount) + ' has ' + str(pageNum) + ' pages, and ' + str(len(text)) + ' characters.')
         result = False
         os.remove("sim.docx")
         while not result:
@@ -43,8 +37,8 @@ for dictionary_iteration in range(10000): #going for 1.000 iterations here just 
                 result = True
             except:
                 time.sleep(1)
-        wb.save("data.xlsx")
         if (pageNum == 2):
+            dictionary_iteration += word_amount
             break
     else:
         continue
